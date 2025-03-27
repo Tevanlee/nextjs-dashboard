@@ -1,8 +1,28 @@
-import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
+import crypto from 'crypto';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+
+// Utility function to hash passwords using crypto
+async function hashPassword(password: string): Promise<string> {
+  // Create a random salt
+  const salt = crypto.randomBytes(16).toString('hex');
+  
+  // Convert password to an ArrayBuffer
+  const encoder = new TextEncoder();
+  const passwordBuffer = encoder.encode(password + salt);
+  
+  // Hash the password with the salt using SHA-256
+  const hashBuffer = await crypto.subtle.digest('SHA-256', passwordBuffer);
+  
+  // Convert the hash to a Base64 string
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  // Return the salt and hash combined
+  return `${salt}:${hashHex}`;
+}
 
 async function seedUsers() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
@@ -17,7 +37,7 @@ async function seedUsers() {
 
   const insertedUsers = await Promise.all(
     users.map(async (user) => {
-      const hashedPassword = await bcrypt.hash(user.password, 10);
+      const hashedPassword = await hashPassword(user.password);
       return sql`
         INSERT INTO users (id, name, email, password)
         VALUES (${user.id}, ${user.name}, ${user.email}, ${hashedPassword})
